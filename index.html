@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="viewport">
+  <div id="grid" aria-hidden="true"></div>
+</div>
+
+<!-- countdown / status overlay -->
+<div id="overlay" aria-hidden="true">
+  <div id="match-countdown">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div>New match starting in:</div>
+      <div id="countdown-timer">10</div>
+    </div>
+    <!-- match mode selector: visible during countdown so players can pick the upcoming mode -->
+    <div id="match-mode-chooser" style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+      <label style="font-weight:700; font-size:13px; margin-right:6px;">Mode:</label>
+      <select id="match-mode-select" aria-label="Choose upcoming match mode" style="padding:6px 8px; border-radius:6px; border:1px solid #ddd;">
+        <option value="random">Random</option>
+        <option value="normal">Normal</option>
+        <option value="main">I'm the main character</option>
+      </select>
+      <button id="match-mode-apply" style="padding:6px 8px; border-radius:6px; border:none; background:#111; color:#fff; font-weight:700; cursor:pointer;">Set</button>
+      <div style="font-size:12px; color:#333; margin-left:8px;">(choosing will persist for next match)</div>
+    </div>
+  </div>
+</div>
+
+<!-- next reset countdown (top-center) -->
+<div id="next-reset" aria-hidden="true">
+  <div>Next reset in: <span id="next-reset-timer">5:00</span></div>
+</div>
+
+<!-- leaderboard -->
+<div id="leaderboard" aria-hidden="true">
+  <div class="leader-card">
+    <div class="leader-title">Leaderboard</div>
+    <ol id="leader-list"></ol>
+  </div>
+</div>
+
+<!-- nickname modal (first-load) -->
+<div id="nickname-modal" aria-hidden="true">
+  <div class="nick-card">
+    <h3>Want to change your name?</h3>
+    <div class="nick-body">
+      <input id="nick-input" placeholder="Enter a nickname (optional)" maxlength="24" />
+      <div class="nick-actions">
+        <button id="nick-skip">Keep default</button>
+        <button id="nick-save">Save</button>
+      </div>
+      <div class="nick-note">This name will only appear in this session and can be changed later.</div>
+    </div>
+  </div>
+</div>
+
+<!-- tutorial button -->
+<button id="tutorial-btn" aria-label="Show tutorial">Tutorial</button>
+<!-- change nickname button (appears when no local nickname) -->
+<div id="change-nick-wrap" style="position:fixed; left:50%; transform:translateX(-50%); bottom:78px; z-index:10001; pointer-events:auto;">
+  <button id="change-nick-btn" aria-label="Change nickname">Change name</button>
+  <button id="change-nick-close" aria-label="Hide change name" title="Hide" style="margin-left:8px; border-radius:8px; padding:8px 10px; background:#eee; border:none; cursor:pointer;">✕</button>
+</div>
+
+
+
+<!-- tutorial modal -->
+<div id="tutorial-modal" aria-hidden="true">
+  <div class="tutorial-card">
+    <button id="tutorial-close" aria-label="Close tutorial">×</button>
+    <h3>Tutorial</h3>
+    <div class="tutorial-body">
+      <p>Move with WASD, arrow keys or mobile arrows. White dots give you 1 point when eaten, and triangles give double. If youre larger than another player, you can eat them. Darker tiles, known as walls, block movement. Axes also appear on tiles, touching them gives 3 wall breaking uses [can stack.], breaking a wall gets rid of one use. Pressing the R key respawns you in a different area. Have fun!</p>
+      <p style="margin-top:8px"><strong>Tip:</strong> Camera follows you only when you move out of view.</p>
+    </div>
+  </div>
+</div>
+
+<!-- minimap -->
+<canvas id="minimap" width="160" height="160" aria-hidden="true" title="Mini-map"></canvas>
+
+<!-- fps counter -->
+<div id="fps" aria-hidden="true">FPS</div>
+
+<script type="module" src="script.js"></script>
+</body>
+</html>
