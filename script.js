@@ -140,7 +140,7 @@ let room = null;
 let localNickname = localStorage.getItem('nickname') || null;
 
 // lightweight cache of usernames observed from connection events or presence payloads.
-// Some clients/accounts may not appear immediately in room.peers; prefer presence.username
+// Some clients/accounts may not appear immediately in multiplayer.peers; prefer presence.username
 // then this cache, then peers to ensure labels are shown globally.
 const remoteUsernames = {};
 
@@ -254,7 +254,7 @@ function positionClientElement(clientId, r, c, color, value = 1, instant = false
   el.style.height = `${size}px`;
 
   // set color and border for player square (no special-case accounts)
-  const peer = room && room.peers ? room.peers[clientId] : null;
+  const peer = room && multiplayer.peers ? multiplayer.peers[clientId] : null;
   if (color) {
     el.style.background = color;
   } else {
@@ -394,8 +394,8 @@ function generateTiles(){
   }
 
   // apply room state walls/dots if present
-  if (room && room.roomState) {
-    const state = room.roomState;
+  if (room && multiplayer.roomState) {
+    const state = multiplayer.roomState;
     // ensure DOM wall classes reflect authoritative room state
     applyWallsToDOM(state.walls || {});
 
@@ -503,23 +503,23 @@ function cameraLoop(){
 
 // check whether a position is blocked by wall
 function isBlocked(r,c){
-  if (!room || !room.roomState || !room.roomState.walls) return false;
-  return !!room.roomState.walls[keyFor(r,c)];
+  if (!room || !multiplayer.roomState || !multiplayer.roomState.walls) return false;
+  return !!multiplayer.roomState.walls[keyFor(r,c)];
 }
 
  // When collected, remove the dot from room state (so it disappears), reward the collector,
  // and immediately remove the dot DOM locally for snappy feedback.
 function collectDotAt(r,c,myId){
-  if (!room || !room.roomState || !room.roomState.dots) return false;
-  const entries = room.roomState.dots;
+  if (!room || !multiplayer.roomState || !multiplayer.roomState.dots) return false;
+  const entries = multiplayer.roomState.dots;
   for (const k in entries){
     const p = entries[k];
     if (p && p.r === r && p.c === c){
       // award to player by increasing presence value
-      const pres = room.presence[myId] || {};
+      const pres = multiplayer.presence[myId] || {};
       const amount = (p.type === 'triangle') ? 2 : 1;
       const newVal = (typeof pres.value === 'number' ? pres.value : 1) + amount;
-      room.updatePresence({ value: newVal });
+      socket.updatePresence({ value: newVal });
 
       // optimistically remove dot DOM in the tile for immediate feedback
       const tile = document.querySelector(`.tile[data-r="${r}"][data-c="${c}"]`);
@@ -541,7 +541,7 @@ function collectDotAt(r,c,myId){
       // remove dot from room state so it disappears for everyone
       const removal = {};
       removal[k] = null;
-      room.updateRoomState({ dots: removal });
+      socket.updateRoomState({ dots: removal });
 
       return true;
     }
@@ -552,9 +552,9 @@ function collectDotAt(r,c,myId){
 // bind WASD / arrow keys and handle movement with wall checks and dot collection
 /* central move action that can be called by keyboard or on-screen buttons */
 function performLocalMove(direction) {
-  const myId = room && room.clientId;
+  const myId = room && multiplayer.clientId;
   if (!room || !myId) return;
-  const myPresence = room.presence[myId] || {};
+  const myPresence = multiplayer.presence[myId] || {};
   let r = typeof myPresence.row === 'number' ? myPresence.row : Math.floor(rows/2);
   let c = typeof myPresence.col === 'number' ? myPresence.col : Math.floor(cols/2);
   let nr = r, nc = c;
@@ -568,7 +568,7 @@ function performLocalMove(direction) {
   // wall block check — if blocked but we have axe uses, break the wall instead of blocking
   const wallKey = keyFor(nr, nc);
   if (isBlocked(nr,nc)) {
-    const pres = room.presence[myId] || {};
+    const pres = multiplayer.presence[myId] || {};
     const uses = typeof pres.axeUses === 'number' ? pres.axeUses : 0;
     if (uses > 0) {
       // play breaking sound and remove wall from room state
@@ -579,13 +579,13 @@ function performLocalMove(direction) {
 
       const removal = {};
       removal[wallKey] = null;
-      try { room.updateRoomState({ walls: removal }); } catch(e){ /* ignore */ }
+      try { socket.updateRoomState({ walls: removal }); } catch(e){ /* ignore */ }
 
       // Optimistically update local room state so other clients see the change immediately
       try {
-        if (room && room.roomState) {
-          room.roomState.walls = { ...(room.roomState.walls || {}) };
-          room.roomState.walls[wallKey] = null;
+        if (room && multiplayer.roomState) {
+          multiplayer.roomState.walls = { ...(multiplayer.roomState.walls || {}) };
+          multiplayer.roomState.walls[wallKey] = null;
         }
       } catch(e){ /* ignore */ }
 
@@ -595,15 +595,15 @@ function performLocalMove(direction) {
         const tileEl = document.querySelector(`.tile[data-r="${wr}"][data-c="${wc}"]`);
         if (tileEl) tileEl.classList.remove('wall');
         // also ensure applyWallsToDOM is run to reconcile any remaining visual state
-        applyWallsToDOM(room && room.roomState ? room.roomState.walls : {});
+        applyWallsToDOM(room && multiplayer.roomState ? multiplayer.roomState.walls : {});
       } catch (domErr) { /* ignore */ }
 
       // decrement axe uses
       const newUses = Math.max(0, uses - 1);
-      try { room.updatePresence({ axeUses: newUses }); } catch(e){ /* ignore */ }
+      try { socket.updatePresence({ axeUses: newUses }); } catch(e){ /* ignore */ }
       // if uses hit zero, clear any axe flag (visual)
       if (newUses <= 0) {
-        try { room.updatePresence({ hasAxe: false }); } catch(e){ /* ignore */ }
+        try { socket.updatePresence({ hasAxe: false }); } catch(e){ /* ignore */ }
       }
       // still allow movement into the now-free tile
     } else {
@@ -623,11 +623,11 @@ function performLocalMove(direction) {
   // ensure we always advertise a username so anonymous users appear for everyone
   const unameToSend = (myPresence && myPresence.username) ? myPresence.username
                         : (localNickname ? localNickname
-                        : (room && room.clientId ? `Anon${String(room.clientId).slice(0,4)}` : undefined));
+                        : (room && multiplayer.clientId ? `Anon${String(multiplayer.clientId).slice(0,4)}` : undefined));
   const presPatch = { row: nr, col: nc, color, value, username: unameToSend };
   // also preserve nickname if available
   if (myPresence && myPresence.nickname) presPatch.nickname = myPresence.nickname;
-  room.updatePresence(presPatch);
+  socket.updatePresence(presPatch);
 
   // play local move sound
   try {
@@ -658,10 +658,10 @@ function bindLocalControls(){
     // respawn with 'r'
     if (key === 'r') {
       e.preventDefault();
-      if (room && room.clientId) {
+      if (room && multiplayer.clientId) {
         const pos = getRandomFreePosition();
         try {
-          room.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 });
+          socket.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 });
         } catch (err) { /* ignore */ }
         // show a quick popup confirming respawn (use global fallback)
         showGlobalPopup('Respawned');
@@ -682,19 +682,19 @@ function bindLocalControls(){
 
 // handle requests from others (e.g., when consumed)
 function bindPresenceRequests(){
-  room.subscribePresenceUpdateRequests((updateRequest, fromClientId) => {
-    const myId = room.clientId;
+  socket.subscribePresenceUpdateRequests((updateRequest, fromClientId) => {
+    const myId = multiplayer.clientId;
     if (updateRequest.type === 'consume' && updateRequest.victim === myId) {
       // we got consumed; reduce/reset and notify attacker
       const resetValue = 1;
       const pos = getRandomFreePosition();
       try {
-        room.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: resetValue });
+        socket.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: resetValue });
       } catch(e){ /* ignore */ }
 
       // send a small event to the attacker to award points
       try {
-        room.send({ type: 'consumed', attacker: fromClientId, victim: myId, amount: updateRequest.amount, echo: false });
+        socket.send({ type: 'consumed', attacker: fromClientId, victim: myId, amount: updateRequest.amount, echo: false });
       } catch(e){ /* ignore */ }
 
       // show local popup on player element; if missing (lag), use global popup fallback
@@ -729,10 +729,10 @@ function bindPresenceRequests(){
 
  // when someone sends 'consumed' event, attacker should increase value; also handle synchronized reset start
 function bindEvents(){
-  room.onmessage = (event) => {
+  socket.onmessage = (event) => {
     const data = event.data;
 
-    // cache simple usernames from built-in connect/disconnect events (helps cases where room.peers
+    // cache simple usernames from built-in connect/disconnect events (helps cases where multiplayer.peers
     // isn't immediately populated or visible due to account differences)
     if (data && (data.type === 'connected' || data.type === 'disconnected')) {
       try {
@@ -756,9 +756,9 @@ function bindEvents(){
             const usernameToAdvertise = accountName || fallbackName;
             if (usernameToAdvertise) {
               // merge a username into our presence to make sure names propagate globally
-              room.updatePresence({ username: usernameToAdvertise });
+              socket.updatePresence({ username: usernameToAdvertise });
               // also cache locally so UI updates immediately
-              remoteUsernames[room.clientId] = usernameToAdvertise;
+              remoteUsernames[multiplayer.clientId] = usernameToAdvertise;
               // force a reconcile so labels update right away
               reconcilePresence();
             }
@@ -766,9 +766,9 @@ function bindEvents(){
         }).catch(()=>{ 
           // as a last-ditch, if getCurrentUser failed but we have a localNickname, advertise it
           try {
-            if (localNickname && room && room.clientId) {
-              room.updatePresence({ username: localNickname });
-              remoteUsernames[room.clientId] = localNickname;
+            if (localNickname && room && multiplayer.clientId) {
+              socket.updatePresence({ username: localNickname });
+              remoteUsernames[multiplayer.clientId] = localNickname;
               reconcilePresence();
             }
           } catch(e){/*ignore*/}
@@ -782,7 +782,7 @@ function bindEvents(){
         generateTiles();
         // reposition ourselves to a free position and reset our value
         const pos = getRandomFreePosition();
-        room.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 });
+        socket.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 });
       }
     }
 
@@ -790,12 +790,12 @@ function bindEvents(){
     if (data.type === 'consumed') {
       const attacker = data.attacker;
       const amount = Number(data.amount) || 0;
-      if (attacker === room.clientId) {
-        const prev = room.presence[room.clientId] || {};
+      if (attacker === multiplayer.clientId) {
+        const prev = multiplayer.presence[multiplayer.clientId] || {};
         const newVal = (typeof prev.value === 'number' ? prev.value : 1) + amount;
-        room.updatePresence({ value: newVal });
+        socket.updatePresence({ value: newVal });
         // show small popup confirmation for attacker
-        const el = clientEls[room.clientId];
+        const el = clientEls[multiplayer.clientId];
         if (el) {
           const popup = el.querySelector('.popup');
           if (popup) {
@@ -818,7 +818,7 @@ function bindEvents(){
       }
     }
 
-    // Legacy onmessage handler: kept but prefer authoritative room.roomState.start_reset_at to trigger resets.
+    // Legacy onmessage handler: kept but prefer authoritative multiplayer.roomState.start_reset_at to trigger resets.
     if (data.type === 'start_reset' && data.startAt) {
       // convert to the same behavior as roomState-driven resets for compatibility
       const startAt = Number(data.startAt);
@@ -859,24 +859,24 @@ function bindEvents(){
           const axes = generateRandomAxes(seed+2);
 
           // determine matchMode: prefer authoritative room state selection if present, otherwise default to 'random'
-          const requestedMode = (room && room.roomState && room.roomState.matchMode) ? room.roomState.matchMode : 'random';
+          const requestedMode = (room && multiplayer.roomState && multiplayer.roomState.matchMode) ? multiplayer.roomState.matchMode : 'random';
           try {
             // persist the mode as part of room state so everyone knows what happened
-            room.updateRoomState({ seed, walls, dots, axes, matchMode: requestedMode });
+            socket.updateRoomState({ seed, walls, dots, axes, matchMode: requestedMode });
           } catch(e) {
             // If a merge write fails, try writing full payload without mode, then mode separately
-            try { room.updateRoomState({ seed, walls, dots, axes }); } catch(e2){/*ignore*/ }
-            try { room.updateRoomState({ matchMode: requestedMode }); } catch(e3){/*ignore*/ }
+            try { socket.updateRoomState({ seed, walls, dots, axes }); } catch(e2){/*ignore*/ }
+            try { socket.updateRoomState({ matchMode: requestedMode }); } catch(e3){/*ignore*/ }
           }
 
           // apply mode effects on the client that executes the reset (assign main character if needed)
           try { applyMatchModeEffects(requestedMode); } catch(e){/*ignore*/}
 
           const pos = getRandomFreePosition();
-          try { room.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 }); } catch(e){ /* ignore */ }
+          try { socket.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 }); } catch(e){ /* ignore */ }
 
           // clear start_reset_at so subsequent cycles behave correctly (only the nextNext drives the next trigger)
-          try { room.updateRoomState({ start_reset_at: null }); } catch(e){ /* ignore */ }
+          try { socket.updateRoomState({ start_reset_at: null }); } catch(e){ /* ignore */ }
 
           // small delay to allow room state to propagate, then clear local guard
           setTimeout(()=>{ resetInProgress = false; }, 800);
@@ -897,7 +897,7 @@ function generateRandomDots(seed) {
   const rng = mulberry32(seed);
   // Increased density: ~8% of tiles now (was 2%)
   const total = Math.floor((MAP_COLS * MAP_ROWS) * 0.08);
-  const walls = room && room.roomState && room.roomState.walls ? room.roomState.walls : {};
+  const walls = room && multiplayer.roomState && multiplayer.roomState.walls ? multiplayer.roomState.walls : {};
   let attempts = 0;
   // Try to place 'total' dots but guard against infinite loops
   while (Object.keys(dots).length < total && attempts < total * 8) {
@@ -926,8 +926,8 @@ function generateRandomAxes(seed) {
     const r = Math.floor(rng() * MAP_ROWS);
     const c = Math.floor(rng() * MAP_COLS);
     const key = keyFor(r, c);
-    const walls = room && room.roomState && room.roomState.walls ? room.roomState.walls : {};
-    const existingDots = room && room.roomState && room.roomState.dots ? room.roomState.dots : {};
+    const walls = room && multiplayer.roomState && multiplayer.roomState.walls ? multiplayer.roomState.walls : {};
+    const existingDots = room && multiplayer.roomState && multiplayer.roomState.dots ? multiplayer.roomState.dots : {};
     if (walls[key] || existingDots[key] || axes[key]) continue;
     // higher probability to spawn an axe so they're noticeably more common
     if (rng() < 0.60) {
@@ -950,26 +950,26 @@ function applyMatchModeEffects(mode) {
 
     // persist the resolved mode back into room state so UI and other clients show the actual chosen mode
     try {
-      room.updateRoomState({ matchMode: resolved });
+      socket.updateRoomState({ matchMode: resolved });
     } catch (e) {
       // best-effort fallback: try to write without throwing
-      try { room.updateRoomState({ matchMode: resolved }); } catch (e2) { /* ignore */ }
+      try { socket.updateRoomState({ matchMode: resolved }); } catch (e2) { /* ignore */ }
     }
 
     // if 'main', pick a random player from the current presence and assign value 5000
     if (resolved === 'main') {
-      const ids = Object.keys(room.presence || {}).filter(id => id);
+      const ids = Object.keys(multiplayer.presence || {}).filter(id => id);
       if (ids.length > 0) {
         const chosen = ids[Math.floor(Math.random() * ids.length)];
         try {
           // Attempt to set chosen player's value; some SDKs may not accept target client in this call.
-          room.updatePresence({ value: 5000 }, chosen);
+          socket.updatePresence({ value: 5000 }, chosen);
         } catch (e) {
           // fallback attempt: notify via event so the chosen client can adjust itself if needed
-          try { room.send({ type: 'assign_main_value', chosen, echo: true }); } catch(e2){/*ignore*/}
+          try { socket.send({ type: 'assign_main_value', chosen, echo: true }); } catch(e2){/*ignore*/}
         }
         // also try to notify others via a short event so clients can show a quick highlight
-        try { room.send({ type: 'main_character_assigned', chosen, echo: true }); } catch(e){/*ignore*/}
+        try { socket.send({ type: 'main_character_assigned', chosen, echo: true }); } catch(e){/*ignore*/}
       }
     }
   } catch (err) { console.warn('applyMatchModeEffects error', err); }
@@ -979,10 +979,10 @@ function applyMatchModeEffects(mode) {
    This picks several random free tiles (avoiding walls and existing dots) and
    updates the room state with new dot entries. */
 function replenishDots(count = 24) {
-  if (!room || !room.roomState) return;
-  const walls = room.roomState.walls || {};
-  const existing = room.roomState.dots || {};
-  const existingAxes = room.roomState.axes || {};
+  if (!room || !multiplayer.roomState) return;
+  const walls = multiplayer.roomState.walls || {};
+  const existing = multiplayer.roomState.dots || {};
+  const existingAxes = multiplayer.roomState.axes || {};
   const additions = {};
   let placed = 0;
   let tries = 0;
@@ -1000,14 +1000,14 @@ function replenishDots(count = 24) {
   }
   if (Object.keys(additions).length > 0) {
     try {
-      room.updateRoomState({ dots: { ...additions, ...existing } });
+      socket.updateRoomState({ dots: { ...additions, ...existing } });
     } catch (err) {
       // If updateRoomState doesn't accept full merge, send incremental removals/additions:
       // prefer incremental approach: set each new key individually
       for (const k in additions) {
         const patch = {};
         patch[k] = additions[k];
-        try { room.updateRoomState({ dots: patch }); } catch(e){ /* ignore */ }
+        try { socket.updateRoomState({ dots: patch }); } catch(e){ /* ignore */ }
       }
     }
   }
@@ -1020,9 +1020,9 @@ function replenishDots(count = 24) {
     if (!walls[k] && !existing[k] && !existingAxes[k]) {
       const ax = {};
       ax[k] = { r, c, type: 'axe' };
-      try { room.updateRoomState({ axes: ax }); } catch(e){
+      try { socket.updateRoomState({ axes: ax }); } catch(e){
         // try incremental
-        try { for (const kk in ax) { const patch = {}; patch[kk]=ax[kk]; room.updateRoomState({ axes: patch }); } } catch(e2) { /* ignore */ }
+        try { for (const kk in ax) { const patch = {}; patch[kk]=ax[kk]; socket.updateRoomState({ axes: patch }); } } catch(e2) { /* ignore */ }
       }
     }
   }
@@ -1144,7 +1144,7 @@ function mulberry32(a) {
 
 // pick a random free tile (not a wall) — avoids spawning inside walls
 function getRandomFreePosition() {
-  const walls = room && room.roomState && room.roomState.walls ? room.roomState.walls : {};
+  const walls = room && multiplayer.roomState && multiplayer.roomState.walls ? multiplayer.roomState.walls : {};
   // try a number of random attempts, then fallback to scanning
   for (let i=0;i<200;i++){
     const r = Math.floor(Math.random()*rows);
@@ -1163,15 +1163,15 @@ function getRandomFreePosition() {
  // When a client tries to collect, remove the dot from room state and award the player;
  // also remove the dot DOM immediately for responsive feedback.
 function tryCollectAt(r,c,clientId) {
-  if (!room || !room.roomState || !room.roomState.dots) return false;
-  const dots = room.roomState.dots;
+  if (!room || !multiplayer.roomState || !multiplayer.roomState.dots) return false;
+  const dots = multiplayer.roomState.dots;
   for (const k in dots) {
     const p = dots[k];
     if (p && p.r === r && p.c === c) {
-      const pres = room.presence[clientId] || {};
+      const pres = multiplayer.presence[clientId] || {};
       const amount = (p.type === 'triangle') ? 2 : 1;
       const newVal = (typeof pres.value === 'number' ? pres.value : 1) + amount;
-      room.updatePresence({ value: newVal });
+      socket.updatePresence({ value: newVal });
 
       // optimistically remove dot/triangle DOM locally
       const tile = document.querySelector(`.tile[data-r="${r}"][data-c="${c}"]`);
@@ -1193,7 +1193,7 @@ function tryCollectAt(r,c,clientId) {
       // remove dot globally
       const removal = {};
       removal[k] = null;
-      room.updateRoomState({ dots: removal });
+      socket.updateRoomState({ dots: removal });
 
       return true;
     }
@@ -1203,16 +1203,16 @@ function tryCollectAt(r,c,clientId) {
 
 // collect an axe (if present) — grants 3 uses to break walls
 function collectAxeAt(r,c,clientId){
-  if (!room || !room.roomState || !room.roomState.axes) return false;
-  const axes = room.roomState.axes;
+  if (!room || !multiplayer.roomState || !multiplayer.roomState.axes) return false;
+  const axes = multiplayer.roomState.axes;
   for (const k in axes) {
     const a = axes[k];
     if (a && a.r === r && a.c === c) {
       // award axe: add 3 uses to existing uses (stack)
-      const pres = room.presence[clientId] || {};
+      const pres = multiplayer.presence[clientId] || {};
       const prevUses = typeof pres.axeUses === 'number' ? pres.axeUses : 0;
       const newUses = prevUses + 3;
-      try { room.updatePresence({ hasAxe: true, axeUses: newUses }); } catch(e){ /* ignore */ }
+      try { socket.updatePresence({ hasAxe: true, axeUses: newUses }); } catch(e){ /* ignore */ }
 
       // optimistic local remove of axe DOM
       const tile = document.querySelector(`.tile[data-r="${r}"][data-c="${c}"]`);
@@ -1231,7 +1231,7 @@ function collectAxeAt(r,c,clientId){
       // remove axe globally
       const removal = {};
       removal[k] = null;
-      try { room.updateRoomState({ axes: removal }); } catch(e){ /* ignore */ }
+      try { socket.updateRoomState({ axes: removal }); } catch(e){ /* ignore */ }
 
       return true;
     }
@@ -1248,12 +1248,12 @@ function startPeriodicReset(){
 
   // If room state doesn't have an authoritative nextResetAt, the first client to notice will set it.
   try {
-    const stateNext = room && room.roomState && Number(room.roomState.nextResetAt);
+    const stateNext = room && multiplayer.roomState && Number(multiplayer.roomState.nextResetAt);
     if (!stateNext || isNaN(stateNext) || stateNext <= Date.now()) {
       const initialNext = Date.now() + interval;
       // choose an initial match mode deterministically here (no "random" placeholder on first join)
-      const resolvedInitialMode = (room && room.roomState && room.roomState.matchMode) ? room.roomState.matchMode : ((Math.random() < 0.18) ? 'main' : 'normal');
-      room.updateRoomState({ nextResetAt: initialNext, matchMode: resolvedInitialMode });
+      const resolvedInitialMode = (room && multiplayer.roomState && multiplayer.roomState.matchMode) ? multiplayer.roomState.matchMode : ((Math.random() < 0.18) ? 'main' : 'normal');
+      socket.updateRoomState({ nextResetAt: initialNext, matchMode: resolvedInitialMode });
     }
   } catch (err) {
     console.warn('Could not persist initial nextResetAt', err);
@@ -1266,8 +1266,8 @@ function startPeriodicReset(){
   // Periodically check the authoritative room state; when nextResetAt is reached, one client
   // will atomically write start_reset_at and a new nextResetAt into room state so everyone follows it.
   nextResetInterval = setInterval(()=>{
-    if (!room || !room.roomState) return;
-    const state = room.roomState;
+    if (!room || !multiplayer.roomState) return;
+    const state = multiplayer.roomState;
     const stateNext = Number(state.nextResetAt) || 0;
     const now = Date.now();
     // If a start_reset already exists and is in the future, don't overwrite it.
@@ -1279,7 +1279,7 @@ function startPeriodicReset(){
       resetInProgress = true;
       try {
         // write authoritative start_reset_at and new nextResetAt into room state so all clients sync
-        room.updateRoomState({ start_reset_at: startAt, nextResetAt: subsequentNext });
+        socket.updateRoomState({ start_reset_at: startAt, nextResetAt: subsequentNext });
 
         // Additionally, schedule a local fallback to execute the reset exactly at startAt
         // in case the room state write doesn't propagate quickly enough for this client to
@@ -1296,22 +1296,22 @@ function startPeriodicReset(){
             const axes = generateRandomAxes(seed+2);
 
             // determine mode to persist: prefer existing room state choice if any, else 'random'
-            const requestedMode = (room && room.roomState && room.roomState.matchMode) ? room.roomState.matchMode : 'random';
+            const requestedMode = (room && multiplayer.roomState && multiplayer.roomState.matchMode) ? multiplayer.roomState.matchMode : 'random';
             try {
-              room.updateRoomState({ seed, walls, dots, axes, matchMode: requestedMode });
+              socket.updateRoomState({ seed, walls, dots, axes, matchMode: requestedMode });
             } catch(e) {
-              try { room.updateRoomState({ seed, walls, dots, axes }); } catch(e2){/*ignore*/}
-              try { room.updateRoomState({ matchMode: requestedMode }); } catch(e3){/*ignore*/}
+              try { socket.updateRoomState({ seed, walls, dots, axes }); } catch(e2){/*ignore*/}
+              try { socket.updateRoomState({ matchMode: requestedMode }); } catch(e3){/*ignore*/}
             }
 
             // apply the effects for the mode (assign main-character if applicable)
             try { applyMatchModeEffects(requestedMode); } catch(e){/*ignore*/}
 
             const pos = getRandomFreePosition();
-            try { room.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 }); } catch(e){ /* ignore */ }
+            try { socket.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 }); } catch(e){ /* ignore */ }
 
             // clear authoritative start_reset_at locally (also safe to attempt on room state)
-            try { room.updateRoomState({ start_reset_at: null }); } catch(e){ /* ignore */ }
+            try { socket.updateRoomState({ start_reset_at: null }); } catch(e){ /* ignore */ }
 
             // hide any countdown UI just in case
             try { countdownEl.style.display = 'none'; countdownEl.style.opacity = '0'; } catch(e){/*ignore*/}
@@ -1349,7 +1349,7 @@ function updateNextResetTimer(){
   const container = document.getElementById('next-reset');
   if (!container) return;
   // derive mode from authoritative room state if available
-  const modeRaw = room && room.roomState && room.roomState.matchMode ? String(room.roomState.matchMode) : 'random';
+  const modeRaw = room && multiplayer.roomState && multiplayer.roomState.matchMode ? String(multiplayer.roomState.matchMode) : 'random';
   const modeLabel = (modeRaw === 'random') ? 'Random' : (modeRaw === 'main' ? "I'm the main character" : (modeRaw === 'normal' ? 'Normal' : modeRaw));
   if (!el || !nextResetAt) {
     container.setAttribute('aria-hidden', 'true');
@@ -1410,8 +1410,8 @@ function showGlobalPopup(message, duration = 1600) {
 
 function onResize(){
   generateTiles();
-  if (room && room.presence && room.presence[room.clientId]) {
-    const p = room.presence[room.clientId];
+  if (room && multiplayer.presence && multiplayer.presence[multiplayer.clientId]) {
+    const p = multiplayer.presence[multiplayer.clientId];
     centerCameraOn(p.row || 0, p.col || 0);
   }
 }
@@ -1468,29 +1468,29 @@ function drawMinimap(){
   const cellH = minimapSize / rowsTotal;
 
   // draw walls
-  if (room && room.roomState && room.roomState.walls) {
+  if (room && multiplayer.roomState && multiplayer.roomState.walls) {
     minimapCtx.fillStyle = '#222';
-    for (const k in room.roomState.walls) {
-      if (!room.roomState.walls[k]) continue;
+    for (const k in multiplayer.roomState.walls) {
+      if (!multiplayer.roomState.walls[k]) continue;
       const [r,c] = k.split(':').map(Number);
       minimapCtx.fillRect(c*cellW, r*cellH, Math.max(1,cellW), Math.max(1,cellH));
     }
   }
 
   // draw dots
-  if (room && room.roomState && room.roomState.dots) {
+  if (room && multiplayer.roomState && multiplayer.roomState.dots) {
     minimapCtx.fillStyle = '#ffffff';
-    for (const k in room.roomState.dots) {
-      const p = room.roomState.dots[k];
+    for (const k in multiplayer.roomState.dots) {
+      const p = multiplayer.roomState.dots[k];
       if (!p) continue;
       minimapCtx.fillRect(p.c*cellW + cellW*0.35, p.r*cellH + cellH*0.35, Math.max(1,cellW*0.3), Math.max(1,cellH*0.3));
     }
   }
 
   // draw players (presence)
-  if (room && room.presence) {
-    for (const id in room.presence) {
-      const p = room.presence[id] || {};
+  if (room && multiplayer.presence) {
+    for (const id in multiplayer.presence) {
+      const p = multiplayer.presence[id] || {};
       if (p.row === undefined || p.col === undefined) continue;
       const x = (p.col) * cellW + cellW/2;
       const y = (p.row) * cellH + cellH/2;
@@ -1500,7 +1500,7 @@ function drawMinimap(){
       minimapCtx.arc(x, y, radius, 0, Math.PI*2);
       minimapCtx.fill();
       // highlight local player
-      if (id === (room && room.clientId)) {
+      if (id === (room && multiplayer.clientId)) {
         minimapCtx.strokeStyle = '#fff';
         minimapCtx.lineWidth = 1.5;
         minimapCtx.stroke();
@@ -1519,30 +1519,35 @@ window.addEventListener('resize', drawMinimap, {passive:true});
 
 /* Reconcile authoritative presence -> DOM, leaderboard, collision checks.
    This central routine ensures player names, sizes, colors and positions are always
-   driven by room.presence (which is kept up-to-date by the SDK). Running frequently
+   driven by multiplayer.presence (which is kept up-to-date by the SDK). Running frequently
    smooths out jitters and prevents missing/placeholder labels. */
 function reconcilePresence(presenceArg) {
-  // Merge any authoritative presence payload with the SDK's room.presence and include peers
-  // so late-arriving peer metadata doesn't cause missing players or stale placeholders.
-  if (!room) return;
+  // authoritative presence from server
   const authoritative = (presenceArg && typeof presenceArg === 'object') ? presenceArg : {};
-  const sdkPresence = (room && room.presence) ? room.presence : {};
-  // presence from callback should override SDK snapshot for immediacy
+
+  // local snapshot from multiplayer state
+  const sdkPresence = multiplayer.presence || {};
+
+  // merge them (server wins)
   const mergedPresence = { ...sdkPresence, ...authoritative };
 
-  // also ensure clients known via room.peers are represented (they may briefly lack presence entries)
-  // we do not invent positions for peers, but we preserve their DOM element so they don't flash/disappear.
-  if (room && room.peers) {
-    for (const pid in room.peers) {
-      if (!mergedPresence[pid]) mergedPresence[pid] = mergedPresence[pid] || {};
+  // ensure peers exist even if they temporarily have no presence
+  if (multiplayer.peers) {
+    for (const pid in multiplayer.peers) {
+      if (!mergedPresence[pid]) mergedPresence[pid] = {};
     }
   }
 
-  // Pull any usernames that may now be available via room.peers into the remoteUsernames cache
+  // now update the DOM / player objects
+  updatePlayersFromPresence(mergedPresence);
+}
+
+
+  // Pull any usernames that may now be available via multiplayer.peers into the remoteUsernames cache
   try {
-    if (room && room.peers) {
-      for (const pid in room.peers) {
-        const pp = room.peers[pid];
+    if (room && multiplayer.peers) {
+      for (const pid in multiplayer.peers) {
+        const pp = multiplayer.peers[pid];
         if (pp && pp.username && !remoteUsernames[pid]) {
           remoteUsernames[pid] = pp.username;
         }
@@ -1553,14 +1558,14 @@ function reconcilePresence(presenceArg) {
   // update DOM nodes for every present or known client
   for (const clientId in mergedPresence) {
     // create element if missing (maintain elements for peers even if they temporarily lack coordinates)
-    createPlayerElement(clientId, clientId === room.clientId);
+    createPlayerElement(clientId, clientId === multiplayer.clientId);
     const el = clientEls[clientId];
     if (!el) continue;
 
     const p = mergedPresence[clientId] || {};
     // label: prefer presence.username, then presence.nickname, then cached remoteUsernames, then peers username, then generic "Player"
     const label = el.querySelector('.player-label');
-    const peer = room.peers ? room.peers[clientId] : null;
+    const peer = multiplayer.peers ? multiplayer.peers[clientId] : null;
     const presenceName = (p.username && String(p.username).trim()) ? p.username
                        : ((p.nickname && String(p.nickname).trim()) ? p.nickname : null);
     const name = presenceName || remoteUsernames[clientId] || (peer && peer.username) || 'Player';
@@ -1586,7 +1591,7 @@ function reconcilePresence(presenceArg) {
     el.dataset.lastValue = String(value);
 
     // center camera on local player when they move
-    if (clientId === room.clientId) {
+    if (clientId === multiplayer.clientId) {
       centerCameraOn(row, col);
     }
   }
@@ -1596,7 +1601,7 @@ function reconcilePresence(presenceArg) {
     const entries = [];
     for (const clientId in mergedPresence) {
       const p = mergedPresence[clientId] || {};
-      const peer = room.peers ? room.peers[clientId] || {} : {};
+      const peer = multiplayer.peers ? multiplayer.peers[clientId] || {} : {};
       const lbName = (p.username && String(p.username).trim()) ? p.username
                      : ((p.nickname && String(p.nickname).trim()) ? p.nickname
                      : (remoteUsernames[clientId] || (peer && peer.username) || 'Player'));
@@ -1636,7 +1641,7 @@ function reconcilePresence(presenceArg) {
         const attackerId = pa.value > pb.value ? a : b;
         const victimId = pa.value > pb.value ? b : a;
         const amount = pa.value > pb.value ? Math.max(1, Math.floor(pb.value)) : Math.max(1, Math.floor(pa.value));
-        try { room.requestPresenceUpdate(victimId, { type: 'consume', victim: victimId, attacker: attackerId, amount }); } catch(e){ /* ignore */ }
+        try { socket.requestPresenceUpdate(victimId, { type: 'consume', victim: victimId, attacker: attackerId, amount }); } catch(e){ /* ignore */ }
       }
     }
       }
@@ -1650,62 +1655,57 @@ function reconcilePresence(presenceArg) {
     const keys = Object.keys(clientEls);
     for (const clientId of keys) {
       const stillPresent = !!mergedPresence[clientId];
-      const stillPeer = !!(room && room.peers && room.peers[clientId]);
+      const stillPeer = !!(room && multiplayer.peers && multiplayer.peers[clientId]);
       if (!stillPresent && !stillPeer) removePlayerElement(clientId);
     }
   } catch (e) { /* ignore */ }
 }
 
 async function initMultiplayer() {
-  // Connect to your RealSocket backend on Render
-  const socket = new RealSocket("wss://tiled-io-server.onrender.com");
-
-  // Wait for the WebSocket to fully open
-  await socket.waitForOpen();
-
-  // Make socket globally accessible if needed
+  const socket = new RealSocket("global_v1");
   window.socket = socket;
 
-  // --- INITIAL PRESENCE SETUP ---
+  await socket.initialize();
+
+  // Copy server snapshot into multiplayer state
+  multiplayer.clientId = socket.clientId;
+  multiplayer.presence = socket.presence;
+  multiplayer.roomState = socket.roomState;
+  multiplayer.peers = socket.peers;
+
+  // Apply initial state
+  reconcilePresence(multiplayer.presence);
+  applyRoomState(multiplayer.roomState);
+
+  // Subscribe to updates
+  socket.subscribePresence((presence) => {
+    multiplayer.presence = presence;
+    reconcilePresence(presence);
+  });
+
+  socket.subscribeRoomState((state) => {
+    multiplayer.roomState = state;
+    applyRoomState(state);
+  });
+
+  socket.subscribePresenceUpdateRequests((payload, fromId) => {
+    // handle consume, collisions, etc.
+  });
+
+  // Send initial presence
   const pos = getRandomFreePosition();
   const color = getRandomColor();
   const value = 1 + Math.floor(Math.random() * 2);
 
-  socket.send("presence:update", {
+  socket.updatePresence({
     row: pos.r,
     col: pos.c,
     color,
     value
   });
 
-  // --- HANDLE PRESENCE UPDATES ---
-  socket.on("presence:all", (presence) => {
-    window.latestPresence = presence;
-    reconcilePresence(presence);
-  });
-
-  socket.on("presence:update", (presence) => {
-    window.latestPresence = presence;
-    reconcilePresence(presence);
-  });
-
-  // --- HANDLE ROOM STATE UPDATES ---
-  socket.on("roomState:update", (state) => {
-    applyRoomState(state);
-  });
-
-  // --- REQUEST INITIAL ROOM STATE FROM SERVER ---
-  socket.send("roomState:request");
-
-  // --- START DOT REPLENISHER ---
+  // Start dot replenisher
   startDotReplenisher();
-
-  // --- SAFETY RECONCILE LOOP ---
-  setInterval(() => {
-    if (window.latestPresence) {
-      reconcilePresence(window.latestPresence);
-    }
-  }, 150);
 }
 
 
@@ -1726,8 +1726,8 @@ if (countdownEl) {
 
 initMultiplayer().then(()=>{
   // apply saved nickname into presence immediately after successful init
-  if (localNickname && room && room.clientId) {
-    try { room.updatePresence({ nickname: localNickname }); } catch(e){ /* ignore */ }
+  if (localNickname && room && multiplayer.clientId) {
+    try { socket.updatePresence({ nickname: localNickname }); } catch(e){ /* ignore */ }
   }
   bindLocalControls();
   startPeriodicReset();
@@ -1757,7 +1757,7 @@ initMultiplayer().then(()=>{
      }
      try {
        // persist selection so the reset logic will pick it up
-       room.updateRoomState({ matchMode: chosen });
+       socket.updateRoomState({ matchMode: chosen });
        // reflect change immediately in the UI next-reset display
        if (typeof updateNextResetTimer === 'function') updateNextResetTimer();
        showGlobalPopup(`Match mode set: ${chosen === 'normal' ? 'Normal' : (chosen === 'main' ? "I'm the main character" : 'Random')}`, 1300);
@@ -1860,10 +1860,10 @@ initMultiplayer().then(()=>{
    mobileControlsEl.appendChild(btn('↑','up'));
    mobileControlsEl.appendChild(document.createElement('div'));
    mobileControlsEl.appendChild(btn('R', () => {
-     if (room && room.clientId) {
+     if (room && multiplayer.clientId) {
        const pos = getRandomFreePosition();
        try {
-         room.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 });
+         socket.updatePresence({ row: pos.r, col: pos.c, color: getRandomColor(), value: 1 });
        } catch(e){ /* ignore */ }
        showGlobalPopup('Respawned');
      }
@@ -1917,11 +1917,11 @@ if (nickSave) {
       localStorage.setItem('nickname', v);
       localNickname = v;
       // update our presence nickname and username if room initialized so others see the change immediately
-      if (room && room.clientId) {
+      if (room && multiplayer.clientId) {
         try {
-          room.updatePresence({ nickname: v, username: v });
+          socket.updatePresence({ nickname: v, username: v });
           // also update local cache so UI updates without waiting for presence roundtrip
-          if (room.clientId) remoteUsernames[room.clientId] = v;
+          if (multiplayer.clientId) remoteUsernames[multiplayer.clientId] = v;
         } catch (err) { /* ignore */ }
       }
       // remove/hide the change button so name can't be changed anymore in this session
