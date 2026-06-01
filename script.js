@@ -27,26 +27,33 @@ class RealSocket {
         let msg;
         try { msg = JSON.parse(event.data); } catch { return; }
 
-        if (msg.type === "init") {
-          this.clientId = msg.clientId;
-          this.presence = msg.presence || {};
-          this.roomState = msg.roomState || {};
-          this.peers = msg.peers || {};
-          resolve();
-          return;
-        }
+if (msg.type === "init") {
+  multiplayer.clientId = msg.clientId;
+  multiplayer.presence = msg.presence || {};
+  multiplayer.roomState = msg.roomState || {};
+  multiplayer.peers = msg.peers || {};
+
+  reconcilePresence(multiplayer.presence);
+  applyRoomState(multiplayer.roomState);
+
+  resolve();
+  return;
+}
+
 
         if (msg.type === "presence") {
-          this.presence = msg.presence || {};
-          this._presenceSubs.forEach(cb => cb(this.presence));
-          return;
-        }
+  multiplayer.presence = msg.presence || {};
+  reconcilePresence(multiplayer.presence);
+  return;
+}
+
 
         if (msg.type === "room_state") {
-          this.roomState = msg.roomState || {};
-          this._roomStateSubs.forEach(cb => cb(this.roomState));
-          return;
-        }
+  multiplayer.roomState = msg.roomState || {};
+  applyRoomState(multiplayer.roomState);
+  return;
+}
+
 
         if (msg.type === "presence_update_request") {
           this._presenceUpdateRequestSubs.forEach(cb => cb(msg.payload, msg.fromClientId));
@@ -82,6 +89,13 @@ class RealSocket {
     this.ws?.send(JSON.stringify({ type: "event", payload }));
   }
 }
+// === Multiplayer state (replaces Websim room) ===
+const multiplayer = {
+  clientId: null,
+  presence: {},
+  roomState: {},
+  peers: {}
+};
 
 
 const VIEW = document.getElementById('viewport');
