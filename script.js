@@ -1540,7 +1540,7 @@ function reconcilePresence(presenceArg) {
 
   // now update the DOM / player objects
   updatePlayersFromPresence(mergedPresence);
-}
+
 
 
   // Pull any usernames that may now be available via multiplayer.peers into the remoteUsernames cache
