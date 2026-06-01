@@ -871,7 +871,7 @@ function bindEvents(){
     }
   };
 }
-})();
+
   // ensure room state has walls/dots/axes; if empty, seed it (use gentler walls by default)
   if (!room.roomState || !room.roomState.seed) {
     const seed = Math.floor(Math.random()*1e9);
