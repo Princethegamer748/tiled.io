@@ -92,25 +92,25 @@ const countdownTimer = document.getElementById('countdown-timer');
 const leaderList = document.getElementById('leader-list');
 
  // preloaded movement sound for local player moves (use provided pop SFX)
-const moveSfx = new Audio('/ui-pop-sound-316482.mp3');
+const moveSfx = new Audio('ui-pop-sound-316482.mp3');
 moveSfx.volume = 0.9;
 moveSfx.preload = 'auto';
 
  // preloaded eat and death sounds
-const eatSfx = new Audio('/roblox-eating-sound-effect-nom-nom-nom (1).mp3');
+const eatSfx = new Audio('roblox-eating-sound-effect-nom-nom-nom (1).mp3');
 eatSfx.volume = 0.9;
 eatSfx.preload = 'auto';
 
-const deathSfx = new Audio('/death.mp3');
+const deathSfx = new Audio('death.mp3');
 deathSfx.volume = 0.9;
 deathSfx.preload = 'auto';
 
 // axe-related sounds
-const crowbarSfx = new Audio('/hcrowbar.mp3'); // wall-breaking sound
+const crowbarSfx = new Audio('hcrowbar.mp3'); // wall-breaking sound
 crowbarSfx.volume = 0.9;
 crowbarSfx.preload = 'auto';
 
-const selectSfx = new Audio('/Select.wav'); // axe pickup sound
+const selectSfx = new Audio('Select.wav'); // axe pickup sound
 selectSfx.volume = 0.9;
 selectSfx.preload = 'auto';
 
@@ -330,7 +330,7 @@ function applyAxesToDOM(axes = {}) {
           if (el.querySelector('.axe-item')) continue;
           const img = document.createElement('img');
           img.className = 'axe-item';
-          img.src = '/Stone_Axe_JE2_BE2.png';
+          img.src = 'Stone_Axe_JE2_BE2.png';
           img.style.position = 'absolute';
           img.style.width = `${Math.max(28, Math.round(logicalTileSize * 0.72))}px`;
           img.style.height = 'auto';
@@ -871,82 +871,6 @@ function bindEvents(){
     }
   };
 }
-
-  // ensure room state has walls/dots/axes; if empty, seed it (use gentler walls by default)
-  if (!room.roomState || !room.roomState.seed) {
-    const seed = Math.floor(Math.random()*1e9);
-    const walls = generateRandomWalls(seed);
-    const dots = generateRandomDots(seed+1);
-    const axes = generateRandomAxes(seed+2);
-    // resolve initial match mode so first-joiners see either 'normal' or 'main' (no "random" placeholder)
-    const resolvedInitialMode = (Math.random() < 0.18) ? 'main' : 'normal';
-    try { room.updateRoomState({ seed, walls, dots, axes, matchMode: resolvedInitialMode }); } catch(e){ /* ignore */ }
-  }
-
-  // ensure our presence advertises a username if available from websim or peers (helps accounts that
-  // don't immediately include username in room.peers/presence on join)
-  try {
-    let username;
-    const currentUser = await window.websim.getCurrentUser().catch(()=>null);
-    if (currentUser && currentUser.username) username = currentUser.username;
-    if (!username && room && room.peers && room.peers[room.clientId] && room.peers[room.clientId].username) {
-      username = room.peers[room.clientId].username;
-    }
-    // set initial presence including username (if found)
-    if (username) {
-      const posFallback = getRandomFreePosition();
-      room.updatePresence({ username, row: room.presence[room.clientId]?.row || posFallback.r, col: room.presence[room.clientId]?.col || posFallback.c });
-      remoteUsernames[room.clientId] = username;
-    }
-  } catch (e) { /* ignore */ }
-
-  // initial presence for this client (avoid walls)
-  const pos = getRandomFreePosition();
-  const color = getRandomColor();
-  const value = 1 + Math.floor(Math.random()*2);
-
-  // Ensure we advertise the real account username so other clients can show proper labels.
-  // window.websim.getCurrentUser() provides the current user's account info.
-  try {
-    const currentUser = await window.websim.getCurrentUser();
-    const username = currentUser && currentUser.username ? currentUser.username : undefined;
-    if (username) {
-      room.updatePresence({ row: pos.r, col: pos.c, color, value, username });
-    } else {
-      room.updatePresence({ row: pos.r, col: pos.c, color, value });
-    }
-  } catch (err) {
-    // fallback if websim isn't available for some reason
-    try { room.updatePresence({ row: pos.r, col: pos.c, color, value }); } catch(e){/*ignore*/}
-  }
-
-  // kick off background dot replenisher so collectibles respawn mid-match
-  startDotReplenisher();
-
-  // subscribe to presence updates and trigger a light reconciliation pass;
-  // prefer using the authoritative presence payload provided by the SDK so updates
-  // (names, positions, values) are applied immediately without waiting on room.presence.
-  room.subscribePresence((presence) => {
-    // Cache any usernames included directly in presence payloads so clients that don't
-    // expose peers immediately still display names correctly.
-    try {
-      for (const clientId in presence) {
-        const p = presence[clientId] || {};
-        if (p && p.username) {
-          remoteUsernames[clientId] = p.username;
-        }
-      }
-    } catch (e) { /* ignore caching errors */ }
-
-    // reconcile using the provided presence object for immediate, authoritative updates
-    reconcilePresence(presence);
-  });
-
-  // perform an immediate reconciliation now using the current authoritative presence
-  reconcilePresence(room && room.presence ? room.presence : {});
-
-  // periodic safety reconcile in case some updates are missed (keeps movement/size/names synced)
-  setInterval(()=>reconcilePresence(room && room.presence ? room.presence : {}), 150);
 
 
 
