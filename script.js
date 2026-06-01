@@ -1,7 +1,88 @@
-/* Multiplayer grid with Websim presence, collectibles, walls, consumption and resets.
-   Simplified: bots have been removed entirely. All bot state, AI controller, bot collisions,
-   and bot rendering have been eliminated so only real players and collectibles remain.
-*/
+// === RealSocket wrapper (replaces WebsimSocket) ===
+const SERVER_URL = "wss://tiled-io-server.onrender.com";
+
+class RealSocket {
+  constructor(roomName) {
+    this.roomName = roomName;
+    this.ws = null;
+
+    this.clientId = null;
+    this.presence = {};
+    this.roomState = {};
+    this.peers = {};
+
+    this._presenceSubs = [];
+    this._roomStateSubs = [];
+    this._presenceUpdateRequestSubs = [];
+
+    this.onmessage = null;
+  }
+
+  async initialize() {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${SERVER_URL}?room=${encodeURIComponent(this.roomName)}`);
+      this.ws = ws;
+
+      ws.onmessage = (event) => {
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+
+        if (msg.type === "init") {
+          this.clientId = msg.clientId;
+          this.presence = msg.presence || {};
+          this.roomState = msg.roomState || {};
+          this.peers = msg.peers || {};
+          resolve();
+          return;
+        }
+
+        if (msg.type === "presence") {
+          this.presence = msg.presence || {};
+          this._presenceSubs.forEach(cb => cb(this.presence));
+          return;
+        }
+
+        if (msg.type === "room_state") {
+          this.roomState = msg.roomState || {};
+          this._roomStateSubs.forEach(cb => cb(this.roomState));
+          return;
+        }
+
+        if (msg.type === "presence_update_request") {
+          this._presenceUpdateRequestSubs.forEach(cb => cb(msg.payload, msg.fromClientId));
+          return;
+        }
+
+        if (this.onmessage) {
+          this.onmessage({ data: msg });
+        }
+      };
+
+      ws.onerror = reject;
+    });
+  }
+
+  updatePresence(data, targetId) {
+    this.ws?.send(JSON.stringify({ type: "update_presence", data, targetId }));
+  }
+
+  updateRoomState(data) {
+    this.ws?.send(JSON.stringify({ type: "update_room_state", data }));
+  }
+
+  subscribePresence(cb) { this._presenceSubs.push(cb); }
+  subscribeRoomState(cb) { this._roomStateSubs.push(cb); }
+  subscribePresenceUpdateRequests(cb) { this._presenceUpdateRequestSubs.push(cb); }
+
+  requestPresenceUpdate(targetId, payload) {
+    this.ws?.send(JSON.stringify({ type: "request_presence_update", targetId, payload }));
+  }
+
+  send(payload) {
+    this.ws?.send(JSON.stringify({ type: "event", payload }));
+  }
+}
+
 
 const VIEW = document.getElementById('viewport');
 const grid = document.getElementById('grid');
@@ -790,13 +871,97 @@ function bindEvents(){
     }
   };
 }
+// === RealSocket wrapper (replaces WebsimSocket) ===
+const SERVER_URL = "wss://tiled-io-server.onrender.com";
+
+class RealSocket {
+  constructor(roomName) {
+    this.roomName = roomName;
+    this.ws = null;
+
+    this.clientId = null;
+    this.presence = {};
+    this.roomState = {};
+    this.peers = {};
+
+    this._presenceSubs = [];
+    this._roomStateSubs = [];
+    this._presenceUpdateRequestSubs = [];
+
+    this.onmessage = null;
+  }
+
+  async initialize() {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${SERVER_URL}?room=${encodeURIComponent(this.roomName)}`);
+      this.ws = ws;
+
+      ws.onmessage = (event) => {
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+
+        if (msg.type === "init") {
+          this.clientId = msg.clientId;
+          this.presence = msg.presence || {};
+          this.roomState = msg.roomState || {};
+          this.peers = msg.peers || {};
+          resolve();
+          return;
+        }
+
+        if (msg.type === "presence") {
+          this.presence = msg.presence || {};
+          this._presenceSubs.forEach(cb => cb(this.presence));
+          return;
+        }
+
+        if (msg.type === "room_state") {
+          this.roomState = msg.roomState || {};
+          this._roomStateSubs.forEach(cb => cb(this.roomState));
+          return;
+        }
+
+        if (msg.type === "presence_update_request") {
+          this._presenceUpdateRequestSubs.forEach(cb => cb(msg.payload, msg.fromClientId));
+          return;
+        }
+
+        if (this.onmessage) {
+          this.onmessage({ data: msg });
+        }
+      };
+
+      ws.onerror = reject;
+    });
+  }
+
+  updatePresence(data, targetId) {
+    this.ws?.send(JSON.stringify({ type: "update_presence", data, targetId }));
+  }
+
+  updateRoomState(data) {
+    this.ws?.send(JSON.stringify({ type: "update_room_state", data }));
+  }
+
+  subscribePresence(cb) { this._presenceSubs.push(cb); }
+  subscribeRoomState(cb) { this._roomStateSubs.push(cb); }
+  subscribePresenceUpdateRequests(cb) { this._presenceUpdateRequestSubs.push(cb); }
+
+  requestPresenceUpdate(targetId, payload) {
+    this.ws?.send(JSON.stringify({ type: "request_presence_update", targetId, payload }));
+  }
+
+  send(payload) {
+    this.ws?.send(JSON.stringify({ type: "event", payload }));
+  }
+}
 
 // core multiplayer init
 async function initMultiplayer(){
   // Use a fixed room name so all clients join the same global session (prevents drifting into separate ephemeral rooms)
   // Bump the version string if you need to invalidate/segregate older sessions.
-  room = new WebsimSocket('global_v1');
-  await room.initialize();
+room = new RealSocket('global_v1');
+await room.initialize();
 
   // cache any existing peers immediately so names are available even if presence arrives later
   try {
