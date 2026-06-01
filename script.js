@@ -1642,6 +1642,59 @@ function reconcilePresence(presenceArg) {
   } catch (e) { /* ignore */ }
 }
 
+async function initMultiplayer() {
+  // Connect to your RealSocket backend on Render
+  const socket = new RealSocket("wss://tiled-io-server.onrender.com");
+
+  // Wait for the WebSocket to fully open
+  await socket.waitForOpen();
+
+  // Make socket globally accessible if needed
+  window.socket = socket;
+
+  // --- INITIAL PRESENCE SETUP ---
+  const pos = getRandomFreePosition();
+  const color = getRandomColor();
+  const value = 1 + Math.floor(Math.random() * 2);
+
+  socket.send("presence:update", {
+    row: pos.r,
+    col: pos.c,
+    color,
+    value
+  });
+
+  // --- HANDLE PRESENCE UPDATES ---
+  socket.on("presence:all", (presence) => {
+    window.latestPresence = presence;
+    reconcilePresence(presence);
+  });
+
+  socket.on("presence:update", (presence) => {
+    window.latestPresence = presence;
+    reconcilePresence(presence);
+  });
+
+  // --- HANDLE ROOM STATE UPDATES ---
+  socket.on("roomState:update", (state) => {
+    applyRoomState(state);
+  });
+
+  // --- REQUEST INITIAL ROOM STATE FROM SERVER ---
+  socket.send("roomState:request");
+
+  // --- START DOT REPLENISHER ---
+  startDotReplenisher();
+
+  // --- SAFETY RECONCILE LOOP ---
+  setInterval(() => {
+    if (window.latestPresence) {
+      reconcilePresence(window.latestPresence);
+    }
+  }, 150);
+}
+
+
 // ensure reconciliation runs regularly; call once now and periodically as a safety net
 setInterval(reconcilePresence, 150);
 reconcilePresence();
