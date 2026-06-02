@@ -361,75 +361,79 @@ function applyAxesToDOM(axes = {}) {
   }
 }
 
-function generateTiles(){
+function generateTiles(stateOverride) {
   grid.innerHTML = '';
+
   // compute a fixed tile size so the full map fits within viewport (keeps resolution)
-  const candidateCols = Math.min(MAP_COLS, Math.max(8, Math.floor(window.innerWidth/48)));
-  const candidateRows = Math.min(MAP_ROWS, Math.max(6, Math.floor(window.innerHeight/48)));
+  const candidateCols = Math.min(MAP_COLS, Math.max(8, Math.floor(window.innerWidth / 48)));
+  const candidateRows = Math.min(MAP_ROWS, Math.max(6, Math.floor(window.innerHeight / 48)));
   const tileW = Math.floor(window.innerWidth / candidateCols);
   const tileH = Math.floor(window.innerHeight / candidateRows);
   const tileSize = Math.min(tileW, tileH);
 
   logicalTileSize = tileSize; // save authoritative tile size for positioning
   grid.style.gridTemplateColumns = `repeat(${MAP_COLS}, ${tileSize}px)`;
-  // set explicit size using CSS grid-auto-rows via style
   grid.style.gridAutoRows = `${tileSize}px`;
 
   // create tiles with coordinates
-  for(let r=0;r<MAP_ROWS;r++){
-    for(let c=0;c<MAP_COLS;c++){
+  for (let r = 0; r < MAP_ROWS; r++) {
+    for (let c = 0; c < MAP_COLS; c++) {
       const t = document.createElement('div');
       t.className = 'tile';
       t.dataset.r = r;
       t.dataset.c = c;
+
       // subtle two-tone
-      if ((r + c) % 2 === 0){
+      if ((r + c) % 2 === 0) {
         t.style.background = 'linear-gradient(180deg,#9b9b9b 0%, #b0b0b0 100%)';
       } else {
         t.style.background = 'linear-gradient(180deg,#a8a8a8 0%, #c0c0c0 100%)';
       }
+
       grid.appendChild(t);
     }
   }
 
-  // apply room state walls/dots if present
-  if (room && multiplayer.roomState) {
-    const state = multiplayer.roomState;
-    // ensure DOM wall classes reflect authoritative room state
-    applyWallsToDOM(state.walls || {});
+  // determine which state to use
+  const state = stateOverride || (room && multiplayer.roomState) || {};
 
-    // keep axe DOM in sync (remove axes that were taken by others and render new ones)
-    applyAxesToDOM(state.axes || {});
+  // apply walls
+  applyWallsToDOM(state.walls || {});
 
-    if (state.dots) {
-      for (const k in state.dots) {
-        const p = state.dots[k];
-        if (!p) continue;
-        const el = document.querySelector(`.tile[data-r="${p.r}"][data-c="${p.c}"]`);
-        if (el) {
-          if (p.type === 'triangle') {
-            // create triangle (CSS triangle)
-            const tri = document.createElement('div');
-            tri.className = 'triangle';
-            tri.style.position = 'absolute';
-            tri.style.left = '50%';
-            tri.style.top = '50%';
-            tri.style.transform = 'translate(-50%,-50%)';
-            tri.style.width = '0';
-            tri.style.height = '0';
-            tri.style.borderLeft = '7px solid transparent';
-            tri.style.borderRight = '7px solid transparent';
-            tri.style.borderBottom = '14px solid rgba(255,255,255,0.95)';
-            tri.style.boxShadow = '0 1px 3px rgba(0,0,0,0.35)';
-            el.appendChild(tri);
-          } else {
-            const dot = document.createElement('div');
-            dot.className = 'dot';
-            el.appendChild(dot);
-          }
-        }
+  // apply axes
+  applyAxesToDOM(state.axes || {});
+
+  // render dots + triangles
+  if (state.dots) {
+    for (const k in state.dots) {
+      const p = state.dots[k];
+      if (!p) continue;
+
+      const el = document.querySelector(`.tile[data-r="${p.r}"][data-c="${p.c}"]`);
+      if (!el) continue;
+
+      if (p.type === 'triangle') {
+        const tri = document.createElement('div');
+        tri.className = 'triangle';
+        tri.style.position = 'absolute';
+        tri.style.left = '50%';
+        tri.style.top = '50%';
+        tri.style.transform = 'translate(-50%,-50%)';
+        tri.style.width = '0';
+        tri.style.height = '0';
+        tri.style.borderLeft = '7px solid transparent';
+        tri.style.borderRight = '7px solid transparent';
+        tri.style.borderBottom = '14px solid rgba(255,255,255,0.95)';
+        tri.style.boxShadow = '0 1px 3px rgba(0,0,0,0.35)';
+        el.appendChild(tri);
+      } else {
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        el.appendChild(dot);
       }
     }
+  }
+}
 
     // note: axes are now handled by applyAxesToDOM above
   }
@@ -1724,6 +1728,11 @@ function applyRoomState(state = {}) {
   generateTiles(state);
 }
 
+function startReconcileLoop() {
+  reconcilePresence();
+  setInterval(reconcilePresence, 150);
+}
+
 
 async function startGame() {
   // 1. Build empty visual grid FIRST
@@ -1734,6 +1743,8 @@ async function startGame() {
 
   // 3. Create local player AFTER multiplayer.clientId exists
   const myId = multiplayer.clientId;
+  localPlayerId = myId;
+
 
   if (!multiplayer.presence[myId]) {
     const pos = getRandomFreePosition();
@@ -1774,6 +1785,8 @@ async function startGame() {
 
   // 6. Presence reconciliation AFTER local player exists
   reconcilePresence(multiplayer.presence);
+  startReconcileLoop();
+
 
   // 7. Start loops LAST
   startPeriodicReset();
