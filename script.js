@@ -443,7 +443,7 @@ function generateTiles(stateOverride) {
   for (const id in clientEls) {
     grid.appendChild(clientEls[id]);
   }
-}
+//} THIS BRACKET IS GONE.
 
  // center camera on a given tile (r,c) only when the tile is outside the viewport (with margin)
 function centerCameraOn(r,c){
