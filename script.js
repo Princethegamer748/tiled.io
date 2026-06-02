@@ -138,7 +138,7 @@ const clientEls = {};
 let room = null;
 let localNickname = localStorage.getItem('nickname') || null;
 let localPlayerId = null; 
-let multiplayer = null;
+
 
 
 // lightweight cache of usernames observed from connection events or presence payloads.
