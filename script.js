@@ -33,8 +33,7 @@ if (msg.type === "init") {
   multiplayer.roomState = msg.roomState || {};
   multiplayer.peers = msg.peers || {};
 
-  reconcilePresence(multiplayer.presence);
-  applyRoomState(multiplayer.roomState);
+  
 
   resolve();
   return;
@@ -1709,29 +1708,63 @@ async function initMultiplayer() {
 }
 
 
-// ensure reconciliation runs regularly; call once now and periodically as a safety net
-setInterval(reconcilePresence, 150);
-reconcilePresence();
+async function startGame() {
+  // 1. Build empty visual grid FIRST
+  generateTiles();
 
-// initial boot
-window.addEventListener('resize', onResize, {passive:true});
-window.addEventListener('orientationchange', onResize, {passive:true});
+  // 2. Connect multiplayer and wait for initial room state
+  await initMultiplayer();
 
-generateTiles();
-// ensure countdown hidden on startup and only shown during reset
-if (countdownEl) {
-  countdownEl.style.display = 'none';
-  countdownEl.style.opacity = '0';
+  // 3. Create local player AFTER multiplayer.clientId exists
+  const myId = multiplayer.clientId;
+
+  if (!multiplayer.presence[myId]) {
+    const pos = getRandomFreePosition();
+
+    socket.updatePresence({
+      row: pos.r,
+      col: pos.c,
+      color: getRandomColor(),
+      value: 1,
+      username: localNickname || `Anon${String(myId).slice(0,4)}`
+    });
+  }
+
+  // create local DOM player immediately
+  createPlayerElement(myId, true);
+
+  // 4. NOW controls are safe
+  bindLocalControls();
+
+  // 5. Apply authoritative room state AFTER tiles exist
+  applyRoomState(multiplayer.roomState);
+
+  // fallback generation if room empty
+  if (
+    !multiplayer.roomState ||
+    !multiplayer.roomState.walls ||
+    Object.keys(multiplayer.roomState.walls).length === 0
+  ) {
+    const seed = Math.floor(Math.random() * 1e9);
+
+    socket.updateRoomState({
+      seed,
+      walls: generateRandomWalls(seed),
+      dots: generateRandomDots(seed + 1),
+      axes: generateRandomAxes(seed + 2)
+    });
+  }
+
+  // 6. Presence reconciliation AFTER local player exists
+  reconcilePresence(multiplayer.presence);
+
+  // 7. Start loops LAST
+  startReconcileLoop();
+  startPeriodicReset();
 }
 
-initMultiplayer().then(()=>{
-  // apply saved nickname into presence immediately after successful init
-  if (localNickname && room && multiplayer.clientId) {
-    try { socket.updatePresence({ nickname: localNickname }); } catch(e){ /* ignore */ }
-  }
-  bindLocalControls();
-  startPeriodicReset();
-}).catch(()=>{ /* ignore init errors */ });
+startGame();
+
 
  // Tutorial modal behavior
  const tutorialBtn = document.getElementById('tutorial-btn');
