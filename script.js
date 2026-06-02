@@ -137,6 +137,9 @@ let logicalTileSize = 32; // authoritative tile size used for positioning
 const clientEls = {};
 let room = null;
 let localNickname = localStorage.getItem('nickname') || null;
+let localPlayerId = null; 
+let multiplayer = null;
+
 
 // lightweight cache of usernames observed from connection events or presence payloads.
 // Some clients/accounts may not appear immediately in multiplayer.peers; prefer presence.username
