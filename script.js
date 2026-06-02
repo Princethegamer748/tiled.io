@@ -1539,7 +1539,7 @@ function reconcilePresence(presenceArg) {
   }
 
   // now update the DOM / player objects
-  updatePlayersFromPresence(mergedPresence);
+ // updatePlayersFromPresence(mergedPresence); <-- haha chud line 
 
 
 
