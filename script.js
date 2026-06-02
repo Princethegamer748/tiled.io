@@ -436,7 +436,8 @@ function generateTiles(stateOverride) {
 }
 
     // note: axes are now handled by applyAxesToDOM above
-  }
+// haha domer! ding!
+  
 
   // reattach existing player nodes into the grid so they stay in sync with grid transforms
   for (const id in clientEls) {
