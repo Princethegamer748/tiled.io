@@ -1707,6 +1707,23 @@ async function initMultiplayer() {
   startDotReplenisher();
 }
 
+function applyRoomState(state = {}) {
+  // 1. Apply walls
+  if (state.walls) {
+    applyWallsToDOM(state.walls);
+  }
+
+  // 2. Apply axes
+  if (state.axes) {
+    applyAxesToDOM(state.axes);
+  }
+
+  // 3. Re-render dots + triangles
+  // Dots are rendered inline inside generateTiles(),
+  // so we must call it again with the updated state.
+  generateTiles(state);
+}
+
 
 async function startGame() {
   // 1. Build empty visual grid FIRST
