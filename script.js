@@ -1776,7 +1776,6 @@ async function startGame() {
   reconcilePresence(multiplayer.presence);
 
   // 7. Start loops LAST
-  startReconcileLoop();
   startPeriodicReset();
 }
 
